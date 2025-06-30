@@ -65,7 +65,7 @@ def process_halo(halo_id: str, in_dir: str, out_dir: str) -> None:
 
     # ---------- carga de datos ----------
     df = pd.DataFrame(
-        load_data(os.path.join(in_dir, f"halo_{halo_id}_datos_dbscan_fu.csv")),
+        load_data(os.path.join(in_dir, f"halo_{halo_id}_datos_hull_withindex.csv")),
         columns=[
             "x", "y", "z", "vx", "vy", "vz",
             "lxvel", "lyvel", "lzvel", "Potential", "U",
@@ -77,12 +77,12 @@ def process_halo(halo_id: str, in_dir: str, out_dir: str) -> None:
     df["Rs"] = np.sqrt(df.x**2 + df.y**2)
     df["Zs"] = df.z
     df_sorted = df.sort_values("Rs")
-    df_disk = df_sorted[(df_sorted.Zs.abs() <= 1.5) & (df_sorted.Rs > 1.0)]
+    df_disk = df_sorted[(df_sorted.Zs.abs() <= 2.0) & (df_sorted.Rs > 0.8)]
     log(f"Filas tras filtrado espacial: {len(df_disk)} / {len(df_sorted)}")
 
     # ---------- perfil radial medio ----------
     deltaR = 0.1
-    Rmax = np.floor(0.95 * df_disk.Rs.max() / deltaR) * deltaR
+    Rmax = np.floor(0.97 * df_disk.Rs.max() / deltaR) * deltaR
     Rs_mean, rho_mean = [], []
     step = 0.0
     while step + deltaR <= Rmax:
