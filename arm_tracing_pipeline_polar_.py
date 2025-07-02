@@ -1,3 +1,4 @@
+from typing import Optional, Union
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -26,14 +27,26 @@ or multiple IDs ::
 Every plot is saved as PNG in the chosen folder and still shown interactively
 when an attached display is available.
 """
-from __future__ import annotations
+#from __future__ import annotations
 
+try:
+    from dataclasses import dataclass
+except ImportError:
+    # Python 3.6 no tiene dataclasses; definimos un stub vacío
+    def dataclass(cls=None, **kwargs):
+        if cls is None:
+            return lambda cls: cls
+        return cls
+    
 import argparse
 import math
 import os
 from collections import deque
-from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+#from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import matplotlib
+matplotlib.use('Agg')  
 
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
@@ -75,14 +88,16 @@ def calculate_pa(slope: float, intercept: float) -> float:
 # -----------------------------------------------------------------------------
 
 def load_and_filter_data(
-    id_halo: str | int,
+    id_halo: Union[str, int],
     theta_min: float,
     theta_max: float,
     *,
     file_prefix: str = "data_rho",
 ) -> pd.DataFrame:
     """Read *{file_prefix}_{id}.csv*, compute **r**, **theta**, and filter range."""
-    df = pd.read_csv(f"{file_prefix}_{id_halo}_filtered.csv")
+    df = pd.read_csv(
+        os.path.join(os.path.dirname(__file__), "input_polar", f"{file_prefix}_{id_halo}_filtered.csv")
+    )
     df["id"] = df.index  # preserve original index
     df["r"] = np.sqrt(df["x"] ** 2 + df["y"] ** 2)
     df["theta"] = np.degrees(np.arctan2(df["y"], df["x"]))
@@ -170,7 +185,7 @@ def _adaptive_factor(n_pts: int, *, ref: float = 2000) -> float:
 
 def generate_bfs_seeds(
     *,
-    id_halo: str | int,
+    id_halo: Union[str, int],
     theta_min: float = 50,
     theta_max: float = 250,
     quartile_threshold: float = 0.15,
@@ -359,11 +374,11 @@ def validate_dispersion_and_reprocess(
 # 7 – PLOTTING HELPERS (with optional saving)
 # -----------------------------------------------------------------------------
 
-def _save_or_show(fig: plt.Figure, save_path: str | None):
+def _save_or_show(fig: plt.Figure, save_path: Union[str, None]):
     if save_path:
         fig.savefig(save_path, bbox_inches="tight")
         print(f"Saved figure → {save_path}")
-    fig.show()
+    #fig.show()
 
 
 def plot_groups_cartesian(
@@ -371,7 +386,7 @@ def plot_groups_cartesian(
     df_all: pd.DataFrame,
     *,
     line_extrap: float = 0.15,
-    save_path: str | None = None,
+    save_path: Union[str, None] = None,
 ):
     big = [g for g in groups if len(g["points"]) >= 60]
     print(f"Plotting Cartesian groups ≥60 pts ({len(big)}) …")
@@ -412,7 +427,7 @@ def plot_groups_polar(
     df_all: pd.DataFrame,
     *,
     line_extrap: float = 0.15,
-    save_path: str | None = None,
+    save_path: Union[str, None] = None,
 ):
     big = [g for g in groups if len(g["points"]) >= 60]
     print(f"Plotting Polar groups ≥60 pts ({len(big)}) …")
@@ -465,18 +480,23 @@ def plot_groups_polar(
 # 8 – HISTOGRAM SEGMENTER (unchanged, only minor typing + saving helper)
 # -----------------------------------------------------------------------------
 
-@dataclass
 class Connection:
-    a: Tuple[float, float]
-    b: Tuple[float, float]
-    delta_r: float
-    euclidean: float
+    def __init__(self,
+                 a: Tuple[float, float],
+                 b: Tuple[float, float],
+                 delta_r: float,
+                 euclidean: float):
+        self.a = a
+        self.b = b
+        self.delta_r = delta_r
+        self.euclidean = euclidean
 
-
-@dataclass
 class IslandObject:
-    type: str
-    boundary: List[Tuple[float, float]]
+    def __init__(self,
+                 type: str,
+                 boundary: List[Tuple[float, float]]):
+        self.type = type
+        self.boundary = boundary
 
 
 class HistogramSegmenter:
@@ -900,7 +920,7 @@ class HistogramSegmenter:
     # ------------------------------------------------------------------
     #  Utilidad rápida para visualizar (save option added)
     # ------------------------------------------------------------------
-    def quick_plot_pasada(self, result, *, save_path: str | None = None, figsize=(14, 6)):
+    def quick_plot_pasada(self, result, *, save_path: Union[str, None] = None, figsize=(14, 6)):
         """
         Muestra el histograma suavizado con los segmentos de brazo, esqueletos y contornos.
         Añade etiquetas de ejes, título, leyenda y cuadrícula para una visualización clara.
@@ -970,7 +990,7 @@ class HistogramSegmenter:
     # ------------------------------------------------------------------
     #  Utilidad rápida para visualizar (save option added, with object fits)
     # ------------------------------------------------------------------
-    def quick_plot(self, result, *, save_path: str | None = None, figsize=(14, 6)):
+    def quick_plot(self, result, *, save_path: Union[str, None] = None, figsize=(14, 6)):
         """
         Displays the smoothed histogram with:
         • Arm segments (clusters)
@@ -1074,7 +1094,7 @@ class HistogramSegmenter:
 # -----------------------------------------------------------------------------
 
 def pipeline_for_id(
-    id_subhalo: str | int,
+    id_subhalo: Union[str, int],
     *,
     output_dir: str = "figures",
     save_plots: bool = True,
@@ -1129,7 +1149,7 @@ def plot_islands_and_paths_polar_pasada(
     ajustes: List[Dict[str, float]],
     id_halo: str,
     line_extrap: float = 0.05,
-    save_path: str | None = None,
+    save_path: Union[str, None] = None,
 ) -> None:
     """
     Gráfico polar que muestra:
@@ -1222,7 +1242,7 @@ def plot_islands_and_paths_polar(
     ajustes: List[Dict[str, float]],
     id_halo: str,
     line_extrap: float = 0.05,
-    save_path: str | None = None,
+    save_path: Union[str, None] = None,
 ) -> None:
     """
     Polar plot displaying:
@@ -1310,8 +1330,13 @@ def plot_islands_and_paths_polar(
     )
 
     # Show or save
-    _save_or_show(fig, save_path)
-
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        print(f"Saved polar fit → {save_path}")
+        plt.close(fig)
+    else:
+        _save_or_show(fig, save_path)
 
 # -----------------------------------------------------------------------------
 # 10 – CLI ENTRY POINT
@@ -1328,18 +1353,18 @@ def _cli():
         datos = pipeline_for_id(_id, output_dir=args.out, save_plots=True)
 
         # Segmenter example (identical settings as notebook)
-        print("voy a entrar al HistogramSegmenter")
+        print(f"{_id} Iniciando proceso")
         segmenter = HistogramSegmenter(bins_theta=120, bins_r=80, dr_multiplier=2.5)
         result = segmenter.run(datos)
         seg_path = os.path.join(args.out, f"hist_segment_{_id}.png") if args.out else None
         ajustes = segmenter.fit_skeletons(result['skeletons_union'])
-        
+        print(f"{_id} Resultado ajustes {ajustes}")
         print(ajustes)
         fit_path = os.path.join(args.out, f"fit_segment_{_id}.png") if args.out else None
         segmenter.quick_plot_ajuste(result, datos, id_halo=_id, save_path=fit_path)
         segmenter.quick_plot(result, save_path=seg_path)
         
-        fit_path_polar = os.path.join(args.out, f"fit_segment_{_id}_polar.png") if args.out else None
+        fit_path_polar = os.path.join(args.out, f"fit_seg_{_id}_polar.png") if args.out else None
         plot_islands_and_paths_polar(result, datos, ajustes, id_halo=_id, line_extrap=0.050, save_path=fit_path_polar)
         print("─" * 60)
 

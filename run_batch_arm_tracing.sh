@@ -1,75 +1,67 @@
 #!/usr/bin/env bash
-# ──────────────────────────────────────────────────────────────────────────────
-# run_batch_arm_tracing.sh – Ejecuta arm_tracing_pipeline_polar_.py
-#                             en paralelo dentro de sesiones *screen*,
-#                             una ventana por ID.
-#
-# Uso:
-#   ./run_batch_arm_tracing.sh 11 117251 372755 388545
-#
-# Después:
-#   screen -r arms              # para adjuntarse y monitorear
-# ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 shopt -s nullglob
 
-# ─── Configuración ───────────────────────────────────────────────────────────
-PYTHON="python3"                       # Intérprete Python
-SCRIPT="arm_tracing_pipeline_polar_.py"  # Script principal
-OUT_ROOT="./figures_batch"             # Carpeta raíz resultados
-LOG_DIR="$OUT_ROOT/logs"               # Carpeta logs
-SESSION="arms"                         # Nombre de la sesión screen
-WORKERS=6                              # Máximo de trabajos simultáneos
+# ─── Configuración ─────────────────────────────────────────────────────────
+PYTHON="python3"
+SCRIPT="./arm_tracing_pipeline_polar_.py"
+INPUT_DIR="./input_polar"
+OUTPUT_DIR="./results_polar"
+LOG_DIR="$OUTPUT_DIR/logs"
+SESSION="halo_batch"
+WORKERS=8   # Máximo de sesiones screen simultáneas
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 1) Comprobaciones básicas
-[[ $# -ge 1 ]] || { echo "Uso: $0 <id1> [id2 ...]"; exit 1; }
-command -v screen >/dev/null || { echo "ERROR: screen no está instalado"; exit 2; }
-[[ -f $SCRIPT ]] || { echo "ERROR: No se encontró $SCRIPT"; exit 3; }
+# Crear carpetas si no existen
+mkdir -p "$INPUT_DIR" "$OUTPUT_DIR" "$LOG_DIR"
 
-# 2) Directorios
-mkdir -p "$OUT_ROOT" "$LOG_DIR"
-
-# 3) Crear / reutilizar la sesión principal
-if screen -list | grep -q "\.${SESSION}[[:space:]]"; then
-  echo "▶️  Reutilizando sesión '$SESSION'"
-else
-  screen -dmS "$SESSION"
-  echo "✅  Sesión screen '$SESSION' creada"
+# Extraer lista de IDs
+IDS=( $(ls "$INPUT_DIR"/data_rho_*_filtered.csv 2>/dev/null \
+         | sed -E 's@.*/data_rho_([0-9]+)_filtered.csv@\1@') )
+if [ ${#IDS[@]} -eq 0 ]; then
+  echo "❌ No se encontraron archivos *_filtered.csv en $INPUT_DIR"
+  exit 1
 fi
 
-# 4) Función que lanza un ID en una ventana separada
-launch_job() {
-  local id="$1"
-  local job="job_${id}"
-  local out_dir="$OUT_ROOT/$id"
-  local log_file="$LOG_DIR/${job}.log"
+echo "▶️  IDs a procesar: ${IDS[*]}"
+echo "▶️  Sesión screen: $SESSION (máx. $WORKERS ventanas)"
 
-  mkdir -p "$out_dir"
+# Crear o reutilizar sesión 'maestra'
+if screen -list | grep -q "\.${SESSION}[[:space:]]"; then
+  echo "♻️  Reutilizando sesión screen \"$SESSION\""
+else
+  screen -dmS "$SESSION"
+  echo "✅  Creada sesión screen \"$SESSION\""
+fi
 
-  # Evitar duplicados
-  if screen -list | grep -q "\.${job}[[:space:]]"; then
-    echo "⚠️  $job ya está en ejecución, saltando"
-    return
-  fi
-
-  echo "🚀  Lanzando $job"
-  screen -S "$SESSION" -dm -t "$job" bash -c "
-    echo \"[START] \$(date)\" >> \"$log_file\"
-    $PYTHON $SCRIPT \"${id}\" --out \"$out_dir\" --no-show >> \"$log_file\" 2>&1
-    echo \"[END]   \$(date)\" >> \"$log_file\"
-    echo \"✔️  ID ${id} finalizado\" >> \"$log_file\"
-  "
+# Conteo de ventanas 'halo_' activas
+count_halos(){
+  screen -ls | grep -c 'halo_[0-9]\+'
 }
 
-# 5) Bucle principal con control de concurrencia
-for id in "$@"; do
-  while [[ \$(screen -ls | grep -c '\.job_') -ge $WORKERS ]]; do
-    sleep 2
+# Lanzar cada halo en su propia ventana
+for id in "${IDS[@]}"; do
+  # Esperar si ya hay >= WORKERS ventanas activas
+  while [ "$(count_halos)" -ge "$WORKERS" ]; do
+    sleep 1
   done
-  launch_job "$id"
-  sleep 0.5
+
+  win="halo_${id}"
+  outd="$OUTPUT_DIR/$id"
+  logf="$LOG_DIR/job_${id}.log"
+  mkdir -p "$outd"
+
+  echo "🚀 Encolando $win"
+
+  screen -S "$SESSION" -X screen -t "$win" bash -lc "
+    echo '[START] ' \$(date +'%F %T') > '$logf'
+    $PYTHON -u $SCRIPT '$id' --out '$outd' --no-show >> '$logf' 2>&1
+    ec=\$?
+    echo '[END]   ' \$(date +'%F %T') \"(exit \$ec)\" >> '$logf'
+    exit \$ec
+  "
 done
 
-echo "🎉  Todos los trabajos han sido encolados en la sesión '$SESSION'"
-echo "💡  Usa: screen -r $SESSION  para monitorear."
+echo "🎉 Todos los trabajos han sido encolados en session \"$SESSION\"."
+echo "   Para verlas: screen -r $SESSION"
+
