@@ -8,7 +8,7 @@ SCRIPT="arm_tracing_pipeline_polar_.py"
 INPUT_DIR="input_polar"
 OUTPUT_ROOT="results_polar"
 LOG_DIR="$OUTPUT_ROOT/logs"
-LISTA="$OUTPUT_ROOT/lista_vacios.txt"
+LISTA="ids_4.txt"
 
 # ─── Crear directorios base ─────────────────────────────────────────────────
 mkdir -p "$INPUT_DIR" "$OUTPUT_ROOT" "$LOG_DIR"
